@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AR Marker Virtual Avatar</title>
+
+  <!-- A-Frame + AR.js -->
+  <script src="https://aframe.io/releases/1.0.4/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <script src="https://raw.githack.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-detector.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/studio-backend/master/src/modules/marker/tools/gesture-handler.js"></script>
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    /* 🔄 Loading Screen */
+    #loading-screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: #e5c89a;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    #loading-circle {
+      width: 10vmin; height: 10vmin;
+      border: 3px solid #9b3c1c;
+      border-top: 3px solid transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 2vh;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    #loading-text {
+      font-size: 4vmin;
+      color: #333;
+      text-align: center;
+    }
+
+    /* 📱 Control Buttons */
+    #controls {
+      position: fixed;
+      bottom: 2vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 2vw;
+      z-index: 9999;
+      flex-wrap: wrap;
+    }
+
+    #controls button {
+      padding: 1.5vh 3vw;
+      font-size: 3.5vmin;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+
+    #controls button:hover {
+      background: rgba(0,0,0,0.8);
+    }
+
+    /* Ensure AR scene stays behind UI */
+    a-scene {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🔄 Loading Screen -->
+  <div id="loading-screen">
+    <div id="loading-circle"></div>
+    <div id="loading-text">AR Marker<br>Virtual Avatar</div>
+  </div>
+
+  <!-- 📱 Control Buttons -->
+  <div id="controls">
+    <button onclick="switchCamera()">Switch Camera</button>
+    <button onclick="captureScreenshot()">📸 Capture</button>
+    <button onclick="shareImage()">Share</button>
+  </div>
+
+  <!-- 🎮 AR Scene -->
+  <a-scene
+    vr-mode-ui="enabled: false;"
+    loading-screen="enabled: false;"
+    renderer="logarithmicDepthBuffer: true; antialias: true;"
+    arjs="trackingMethod: best; sourceType: webcam; sourceWidth:1280; sourceHeight:720; displayWidth:1280; displayHeight:720; debugUIEnabled: false;"
+    id="scene"
+    embedded
+    gesture-detector
+  >
+    <a-assets>
+      <!-- Replace with your GLTF model -->
+      <a-asset-item id="avatar-model-asset" src="assets/asset.gltf"></a-asset-item>
+    </a-assets>
+
+    <!-- Custom marker -->
+    <a-marker
+      id="avatar-marker"
+      type="pattern"
+      preset="custom"
+      url="assets/marker.patt"
+      raycaster="objects: .clickable"
+      emitevents="true"
+      cursor="fuse: false; rayOrigin: mouse;"
+    >
+      <!-- Avatar model -->
+      <a-entity
+        id="avatar-model"
+        position="0 0 0"
+        scale="0.3 0.3 0.3"
+        rotation="0 180 0"
+        animation-mixer="loop: repeat"
+        gltf-model="#avatar-model-asset"
+        class="clickable"
+        gesture-handler
+      ></a-entity>
+
+      <!-- Bio text above avatar -->
+      <a-entity position="0 1.2 0">
+        <a-text
+          value="Sourav Kumar\nDesigner | Team Alpha"
+          align="center"
+          color="#222"
+          width="3.5"
+          side="double"
+        ></a-text>
+      </a-entity>
+    </a-marker>
+
+    <!-- Wider FOV -->
+    <a-entity camera fov="80"></a-entity>
+  </a-scene>
+
+  <script>
+    // ✅ Hide loading screen only when AR.js video is ready
+    window.addEventListener('arjs-video-loaded', () => {
+      document.getElementById('loading-screen').style.display = 'none';
+    });
+
+    // ✅ Switch Camera
+    let isFront = false;
+    async function switchCamera() {
+      isFront = !isFront;
+      const constraints = {
+        video: { facingMode: isFront ? "user" : "environment" }
+      };
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const video = document.querySelector('video'); // AR.js webcam feed
+        if (video) {
+          video.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Camera switch failed", err);
+      }
+    }
+
+    // ✅ Screenshot: capture video + AR overlay
+    function captureScreenshot() {
+      const video = document.querySelector('video');
+      const arCanvas = document.querySelector('canvas');
+
+      if (!video || !arCanvas) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+
+      // draw video
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // draw AR overlay
+      ctx.drawImage(arCanvas, 0, 0, canvas.width, canvas.height);
+
+      // save
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = 'ar-screenshot.png';
+      link.click();
+    }
+
+    // ✅ Share via Web Share API
+    function shareImage() {
+      const video = document.querySelector('video');
+      const arCanvas = document.querySelector('canvas');
+
+      if (!video || !arCanvas) return;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(arCanvas, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+        const file = new File([blob], "ar-screenshot.png", { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({
+            files: [file],
+            title: "Check out my AR avatar!",
+            text: "Made at the Hackathon 🚀"
+          }).catch(err => console.log("Share cancelled", err));
+        } else {
+          alert("Sharing not supported on this browser. Please save and share manually.");
+        }
+      });
+    }
+  </script>
+</body>
+</html>
